@@ -1,0 +1,26 @@
+QWidget {
+  background-color: #1e272e;
+  color: #f5f6fa;
+  font-family: Segoe UI, Arial, sans-serif;
+}
+QLineEdit, QSpinBox, QComboBox, QTableWidget, QPushButton {
+  border: 1px solid #485460;
+  background-color: #2f3640;
+  color: #f5f6fa;
+}
+QPushButton {
+  padding: 8px;
+  border-radius: 4px;
+}
+QPushButton:hover {
+  background-color: #40739e;
+}
+QHeaderView::section {
+  background-color: #273c75;
+  padding: 6px;
+  border: 1px solid #485460;
+}
+QStatusBar {
+  background-color: #2f3640;
+  color: #f5f6fa;
+}

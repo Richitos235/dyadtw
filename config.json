@@ -1,0 +1,49 @@
+{
+  "browser": {
+    "headless": false,
+    "delay_multiplier": 1.0,
+    "auto_reconnect": true,
+    "base_url": "https://zz1.beta.the-west.net/"
+  },
+  "scheduler": {
+    "poll_interval_seconds": 2,
+    "max_queue_length": 12,
+    "job_retry_limit": 2,
+    "job_cooldown_seconds": 4
+  },
+  "logging": {
+    "level": "DEBUG",
+    "file": "westbot_v6.log"
+  },
+  "ui": {
+    "theme": "dark"
+  },
+  "queue": [
+    {
+      "task_id": "022d54f1-4366-421f-9bd6-5673afb94a66",
+      "type": "job",
+      "name": "Mine sulfur",
+      "payload": {
+        "jobId": 118,
+        "x": 28418,
+        "y": 19196,
+        "duration": 15
+      },
+      "priority": 50,
+      "status": "failed",
+      "repeat_count": 1,
+      "remaining": 1,
+      "attempts": 3,
+      "max_retries": 2,
+      "cooldown_seconds": 4,
+      "created_at": "2026-05-18T19:52:11.267416",
+      "updated_at": "2026-05-18T19:52:16.661518",
+      "last_error": "Failed to queue job"
+    }
+  ],
+  "credentials": {
+    "username": "LordPoseidon",
+    "password": "Ks_pZ->AuM\"65wj"
+  },
+  "database": {}
+}
