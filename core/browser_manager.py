@@ -26,6 +26,9 @@ class BrowserManager:
         self._handles: Set[str] = set()
         self._injector = None
         self._listeners: List[Callable[[], None]] = []
+        # Load the audit interceptor script
+        interceptor_path = self.root_path / "js" / "interceptor.js"
+        self.interceptor_text = interceptor_path.read_text(encoding="utf-8") if interceptor_path.exists() else ""
 
     def set_injector(self, injector) -> None:
         self._injector = injector
@@ -60,87 +63,6 @@ class BrowserManager:
             self.shutdown()
             return False
 
-    def get_performance_logs(self) -> List[Dict[str, Any]]:
-        if self.driver is None:
-            return []
-        try:
-            return self.driver.get_log("performance")
-        except WebDriverException as error:
-            self.logger.debug("Failed to read performance logs: %s", error)
-            return []
-
-    def get_response_body(self, request_id: str) -> str:
-        if self.driver is None:
-            return ""
-        try:
-            response = self.driver.execute_cdp_cmd("Network.getResponseBody", {"requestId": request_id})
-            body = response.get("body", "")
-            if response.get("base64Encoded"):
-                body = json.loads(body)
-            return body
-        except Exception as error:
-            self.logger.debug("Failed to get response body: %s", error)
-            return ""
-
-    def extract_visible_job_name(self, job_id: Optional[int] = None) -> str:
-        if self.driver is None:
-            return ""
-        target_expression = f".wjob-{job_id}" if job_id else ".jobwindow"
-        script = f"""
-            var container = document.querySelector('{target_expression}') || document.querySelector('.jobwindow') || document.querySelector('.window_content');
-            if (!container) return '';
-            var title = container.querySelector('.headline, .window_header h1, .window_header h2, .job_title, .jobhead');
-            if (title) return title.textContent.trim();
-            return container.textContent.trim().split('\n')[0] || '';
-        """
-        result = self.execute_script(script, "")
-        return str(result or "").strip()
-
-    def extract_visible_town_name(self, unit_id: Optional[int] = None) -> str:
-        if self.driver is None:
-            return ""
-        script = """
-            var container = document.querySelector('.townwindow') || document.querySelector('.townView') || document.querySelector('.window_content');
-            if (!container) return '';
-            var title = container.querySelector('.town_name, .headline, .window_header h1, .window_header h2');
-            if (title) return title.textContent.trim();
-            return container.textContent.trim().split('\n')[0] || '';
-        """
-        result = self.execute_script(script, "")
-        return str(result or "").strip()
-
-    def extract_current_task_window(self) -> Optional[Dict[str, Any]]:
-        if self.driver is None:
-            return None
-        script = """
-            function queryField(name) {
-                var input = document.querySelector("input[name='" + name + "']") || document.querySelector("input[name='tasks[0][" + name + "]']");
-                return input ? input.value || input.textContent || '' : '';
-            }
-            var jobId = queryField('jobId') || queryField('job_id');
-            var unitId = queryField('unitId');
-            var x = queryField('x');
-            var y = queryField('y');
-            var duration = queryField('duration');
-            var typeValue = queryField('type') || queryField('taskType');
-            var title = '';
-            var headline = document.querySelector('.headline, .window_header h1, .window_header h2, .job_title, .town_name');
-            if (headline) title = headline.textContent.trim();
-            return {
-                jobId: jobId ? parseInt(jobId, 10) : null,
-                unitId: unitId ? parseInt(unitId, 10) : null,
-                x: x ? parseInt(x, 10) : null,
-                y: y ? parseInt(y, 10) : null,
-                duration: duration ? parseInt(duration, 10) : null,
-                type: typeValue || '',
-                name: title || '',
-            };
-        """
-        result = self.execute_script(script, None)
-        if not isinstance(result, dict):
-            return None
-        return result
-
     def _start_monitor(self) -> None:
         if self._thread and self._thread.is_alive():
             return
@@ -154,6 +76,21 @@ class BrowserManager:
                 continue
             self._detect_window_changes()
             self._trigger_reinjection()
+            self._inject_audit_interceptor()
+
+    def _inject_audit_interceptor(self) -> None:
+        if not self.driver or not self.interceptor_text:
+            return
+        try:
+            # Inject the interceptor if it's not already there
+            self.driver.execute_script(f"""
+                if (!window._westbot_interceptor_active) {{
+                    {self.interceptor_text}
+                    window._westbot_interceptor_active = true;
+                }}
+            """)
+        except Exception:
+            pass
 
     def _detect_window_changes(self) -> None:
         try:
@@ -170,8 +107,6 @@ class BrowserManager:
 
     def _trigger_reinjection(self) -> None:
         if self._injector is None or self.driver is None:
-            return
-        if self.driver.current_window_handle not in self._handles:
             return
         try:
             self._injector.inject(self.driver)
@@ -259,3 +194,84 @@ class BrowserManager:
                 pass
             self.driver = None
         self.logger.info("Browser session terminated")
+
+    def get_performance_logs(self) -> List[Dict[str, Any]]:
+        if self.driver is None:
+            return []
+        try:
+            return self.driver.get_log("performance")
+        except WebDriverException as error:
+            self.logger.debug("Failed to read performance logs: %s", error)
+            return []
+
+    def get_response_body(self, request_id: str) -> str:
+        if self.driver is None:
+            return ""
+        try:
+            response = self.driver.execute_cdp_cmd("Network.getResponseBody", {"requestId": request_id})
+            body = response.get("body", "")
+            if response.get("base64Encoded"):
+                body = json.loads(body)
+            return body
+        except Exception as error:
+            self.logger.debug("Failed to get response body: %s", error)
+            return ""
+
+    def extract_visible_job_name(self, job_id: Optional[int] = None) -> str:
+        if self.driver is None:
+            return ""
+        target_expression = f".wjob-{job_id}" if job_id else ".jobwindow"
+        script = f"""
+            var container = document.querySelector('{target_expression}') || document.querySelector('.jobwindow') || document.querySelector('.window_content');
+            if (!container) return '';
+            var title = container.querySelector('.headline, .window_header h1, .window_header h2, .job_title, .jobhead');
+            if (title) return title.textContent.trim();
+            return container.textContent.trim().split('\\n')[0] || '';
+        """
+        result = self.execute_script(script, "")
+        return str(result or "").strip()
+
+    def extract_visible_town_name(self, unit_id: Optional[int] = None) -> str:
+        if self.driver is None:
+            return ""
+        script = """
+            var container = document.querySelector('.townwindow') || document.querySelector('.townView') || document.querySelector('.window_content');
+            if (!container) return '';
+            var title = container.querySelector('.town_name, .headline, .window_header h1, .window_header h2');
+            if (title) return title.textContent.trim();
+            return container.textContent.trim().split('\\n')[0] || '';
+        """
+        result = self.execute_script(script, "")
+        return str(result or "").strip()
+
+    def extract_current_task_window(self) -> Optional[Dict[str, Any]]:
+        if self.driver is None:
+            return None
+        script = """
+            function queryField(name) {
+                var input = document.querySelector("input[name='" + name + "']") || document.querySelector("input[name='tasks[0][" + name + "]']");
+                return input ? input.value || input.textContent || '' : '';
+            }
+            var jobId = queryField('jobId') || queryField('job_id');
+            var unitId = queryField('unitId');
+            var x = queryField('x');
+            var y = queryField('y');
+            var duration = queryField('duration');
+            var typeValue = queryField('type') || queryField('taskType');
+            var title = '';
+            var headline = document.querySelector('.headline, .window_header h1, .window_header h2, .job_title, .town_name');
+            if (headline) title = headline.textContent.trim();
+            return {
+                jobId: jobId ? parseInt(jobId, 10) : null,
+                unitId: unitId ? parseInt(unitId, 10) : null,
+                x: x ? parseInt(x, 10) : null,
+                y: y ? parseInt(y, 10) : null,
+                duration: duration ? parseInt(duration, 10) : null,
+                type: typeValue || '',
+                name: title || '',
+            };
+        """
+        result = self.execute_script(script, None)
+        if not isinstance(result, dict):
+            return None
+        return result

@@ -10,6 +10,7 @@ from core.parser_engine import ParserEngine
 from core.queue_manager import QueueManager
 from core.storage_manager import StorageManager
 from core.task_executor import TaskExecutor
+from core.api_server import ApiServer
 from database.database_manager import DatabaseManager
 from ui.main_window import MainWindow
 
@@ -28,6 +29,10 @@ def main() -> None:
     injector_manager = InjectorManager(root_folder / "js" / "injector.js", browser_manager, logger)
     queue_manager = QueueManager(storage, logger)
     task_executor = TaskExecutor(queue_manager, browser_manager, injector_manager, storage, logger)
+
+    # Initialize and start the Audit API Server
+    api_server = ApiServer(database_manager, logger)
+    api_server.start()
 
     browser_manager.set_injector(injector_manager)
     network_sniffer.start()
